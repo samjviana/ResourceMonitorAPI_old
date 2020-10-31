@@ -11,15 +11,15 @@ namespace ResourceMonitorAPI.models {
         [Required]
         [Index(IsUnique = true, Order = 1)]
         [StringLength(16)]
-        public string nome { get; set; }
+        public string name { get; set; }
         [Required]
-        public ICollection<Armazenamento> armazenamentos { get; set; }
+        virtual public ICollection<Armazenamento> storages { get; set; }
         [Required]
-        public RAM ram { get; set; }
+        virtual public RAM ram { get; set; }
         [Required]
-        public ICollection<CPU> cpus { get; set; }
+        virtual public ICollection<CPU> cpus { get; set; }
         [Required]
-        public ICollection<GPU> gpus { get; set; }
-        public bool estado { get; set; }
+        virtual public ICollection<GPU> gpus { get; set; }
+        public bool status { get; set; }
     }
 }

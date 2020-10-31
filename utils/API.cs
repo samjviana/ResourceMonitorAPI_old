@@ -10,18 +10,20 @@ using System.Threading;
 using Newtonsoft.Json;
 using ResourceMonitorApi.dao;
 using ResourceMonitorAPI.dao;
+using ResourceMonitorAPI.models;
 
 namespace ResourceMonitorAPI.utils {
     public class API {
         private HttpListener listener;
         private Thread listenerThread;
         private bool isRunning;
-        private Dictionary<string, Type> tables;
+        private Dictionary<string, Object> readings;
 
         public API() {
             try {
                 this.listener = new HttpListener();
                 this.listener.IgnoreWriteExceptions = true;
+                readings = new Dictionary<string, Object>();
             }   
             catch (Exception ex) {
                 Console.WriteLine(ex.Message);
@@ -49,19 +51,6 @@ namespace ResourceMonitorAPI.utils {
                 if (this.listenerThread == null) {
                     this.listenerThread = new Thread(handleRequests);
                     this.listenerThread.Start();
-                }
-
-                tables = new Dictionary<string, Type>();
-                using (var context = new DatabaseContext()) {
-                    var properties = context.GetType().GetProperties();
-                    foreach(var property in properties) {
-                        if (property.PropertyType.IsGenericType) {
-                            if (typeof(DbSet<>).IsAssignableFrom(property.PropertyType.GetGenericTypeDefinition())) {
-                                var entityTypes = property.PropertyType.GetGenericArguments();
-                                tables.Add(entityTypes[0].Name.ToLower(), Type.GetType(entityTypes[0].Name));
-                            }
-                        }
-                    }
                 }
             }
             catch (Exception ex) {
@@ -117,7 +106,7 @@ namespace ResourceMonitorAPI.utils {
 
             HttpListenerRequest httpRequest = httpContext.Request;
             string requestString = httpRequest.RawUrl.Substring(1);
-            Console.WriteLine(requestString);
+            //Console.WriteLine(requestString);
 
             string body = "";
             using (Stream bodyStream = httpRequest.InputStream) {
@@ -138,7 +127,7 @@ namespace ResourceMonitorAPI.utils {
                 keys[0] = requestString;
             }
 
-            string json = null;
+            string json = "";
             try {
                 if (requestString.StartsWith("armazenamento")) {
                     json = processRequest(new ArmazenamentoDAO(), keys, body, httpRequest.HttpMethod);
@@ -154,6 +143,12 @@ namespace ResourceMonitorAPI.utils {
                 }
                 else if (requestString.StartsWith("ram")) {
                     json = processRequest(new RAMDAO(), keys, body, httpRequest.HttpMethod);
+                }
+                else if (requestString.StartsWith("leitura")) {
+                    json = processRequest(keys, body, httpRequest.HttpMethod);
+                }
+                else if (requestString.StartsWith("versao")) {
+                    json = processRequest();
                 }
                 else {
                     json = "{}";
@@ -179,6 +174,125 @@ namespace ResourceMonitorAPI.utils {
                         List<T> objectList = dao.get();
                         json = JsonConvert.SerializeObject(objectList);
                     }
+                    else {
+                        if (dao is ComputadorDAO) {
+                            string nome = keys[1];
+                            ComputadorDAO computadorDao = new ComputadorDAO();
+                            Computador computador = computadorDao.getByNome(nome);
+                            json = JsonConvert.SerializeObject(computador);
+                        }
+                    }
+                    break;
+                case "POST":
+                    dynamic data = (T)JsonConvert.DeserializeObject<T>(body);
+                    if (dao is ComputadorDAO) {
+                        string nome = data.name;
+                        ComputadorDAO computadorDao = new ComputadorDAO();
+                        Computador computador = computadorDao.getByNome(nome);
+                        if (computador != null) {
+                            computador.cpus = data.cpus;
+                            computador.gpus = data.gpus;
+                            computador.storages = data.storages;
+                            computador.ram = data.ram;
+                            success = dao.update((dynamic)computador);
+                        }
+                        else {
+                            success = dao.add(data);
+                        }
+                    }
+                    json = "{\"status\":\"success\"}";
+                    break;
+                default:
+                    break;
+            }
+
+            return json;
+        }
+
+        private string processRequest(string[] keys, string body, string method) {
+            string json = null;
+            ComputadorDAO dao = new ComputadorDAO();
+
+            switch (method) {
+                case "GET":
+                    dynamic readingsObj = JsonConvert.DeserializeObject(readings[keys[1]].ToString());
+                    switch (keys[2]) {
+                        case "cpu":
+                            int cpuId = Int32.Parse(keys[3]);
+                            dynamic cpuObj = readingsObj.CPU[cpuId].Sensors;
+                            json = JsonConvert.SerializeObject(new {
+                                load = cpuObj.Load["CPU Total"].Value,
+                                temperature = cpuObj.Temperature.Average,
+                                clock = cpuObj.Clock.Average,
+                                power = cpuObj.Power["CPU Package"].Value,
+                            });
+                            break;
+                        case "gpu":
+                            int gpuId = Int32.Parse(keys[3]);
+                            dynamic gpuObj = readingsObj.GpuNvidia[gpuId].Sensors;
+                            json = JsonConvert.SerializeObject(new {
+                                load = gpuObj.Load.GPUCore.Value,
+                                memoryload = gpuObj.Load.GPUMemory.Value,
+                                temperature = gpuObj.Temperature.GPUCore.Value,
+                                coreclock = gpuObj.Clock.GPUCore.Value,
+                                memoryclock = gpuObj.Clock.GPUMemory.Value,
+                            });
+                            break;
+                        case "ram":
+                            dynamic ramObj = readingsObj.RAM[0].Sensors;
+                            json = JsonConvert.SerializeObject(new {
+                                load = ramObj.Load.Memory.Value,
+                                used = ramObj.Data["Used Memory"].Value,
+                                free = ramObj.Data["Available Memory"].Value,
+                            });
+                            break;
+                        case "hdd":
+                            List<dynamic> hddObj = JsonConvert.DeserializeObject<List<dynamic>>(readingsObj.HDD.ToString());
+                            List<dynamic> storages = new List<dynamic>();
+                            for (int i = 0; i < hddObj.Count; i++) {
+                                storages.Add(new {
+                                    load = hddObj[i].Sensors.Load["Used Space"].Value,
+                                    read = hddObj[i].Sensors.Data["Host Reads"] == null ? -1 : hddObj[i].Sensors.Data["Host Reads"].Value,
+                                    write = hddObj[i].Sensors.Data["Host Writes"] == null ? -1 : hddObj[i].Sensors.Data["Host Writes"].Value,
+                                });
+                            }
+                            json = JsonConvert.SerializeObject(storages);
+                            break;
+                    }
+                    break;
+                case "POST":
+                    dynamic data = JsonConvert.DeserializeObject(body);
+                    Computador computador = dao.getByNome(String.Format("{0}", data.Name));
+                    if (computador == null) {
+                        return "{\"status\":\"error\"}";
+                    } 
+
+                    if (!readings.ContainsKey(computador.name)) {
+                        readings.Add(computador.name, data.Hardware);
+                    }
+                    else {
+                        readings[computador.name] = data.Hardware;
+                    }
+                    json = "{\"status\":\"success\"}";
+                    break;
+                default:
+                    break;
+            }
+
+            return json;
+        }
+
+        private string processRequest() {
+            string clientVersion  = "0.8.0";
+            return "{\"ClientVersion\":\"" + clientVersion + "\"}";
+        }
+
+        private string processLeitura(string[] keys, string body, string method) {
+            string json = null;
+            ComputadorDAO dao = new ComputadorDAO();
+
+            switch (method) {
+                case "GET":
                     break;
                 case "POST":
                     break;
@@ -190,6 +304,9 @@ namespace ResourceMonitorAPI.utils {
         }
 
         private void SendJson(HttpListenerResponse response, string content) {
+            if (content == null) {
+                content = "{}";
+            }
             byte[] contentBytes = Encoding.UTF8.GetBytes(content);
 
             response.AddHeader("Cache-Control", "no-cache");

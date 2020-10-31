@@ -8,11 +8,11 @@ namespace ResourceMonitorAPI.models {
         [Key]
         public int id { get; set; }
         [Required]
-        public int numero { get; set; }
+        public int number { get; set; }
         [Required]
-        public string nome { get; set; }
-        public double temperatura { get; set; }
-        public double clockNucleo { get; set; }
-        public double clockMemoria { get; set; }
+        public string name { get; set; }
+        public double temperature { get; set; }
+        public double coreclock { get; set; }
+        public double memoryclock { get; set; }
     }
 }

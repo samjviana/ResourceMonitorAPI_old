@@ -8,7 +8,7 @@ namespace ResourceMonitorAPI.models {
         [Key]
         public int id { get; set; }
         [Required]
-        public int total { get; set; }
-        public int pentes { get; set; }
+        public double total { get; set; }
+        public int modules { get; set; }
     }
 }

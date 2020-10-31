@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Entity;
+using System.Data.Entity.Infrastructure;
 using System.Linq;
 using ResourceMonitorAPI.utils;
 
@@ -18,13 +19,65 @@ namespace ResourceMonitorAPI.dao {
             try {
                 using (var context = new DatabaseContext()) {
                     var table = (DbSet<T>)typeof(DatabaseContext).GetProperty(tableName).GetValue(context);
-                    return table.ToList<T>();
+                    var queryable = table.AsQueryable();
+                    foreach (var property in this.type.GetProperties()) {
+                        var isVirtual = property.GetGetMethod().IsVirtual;
+                        if (isVirtual) {
+                            queryable = queryable.Include(property.Name);
+                        }
+                    }
+                    return queryable.ToList<T>();
                 }
             }
             catch (Exception ex) {
                 Console.WriteLine(ex.Message);
                 throw ex;
             }
+        }
+
+        public T get(int id) {
+            try {
+                using (var context = new DatabaseContext()) {
+                    var table = (DbSet<T>)typeof(DatabaseContext).GetProperty(tableName).GetValue(context);
+                    return table.Find(id);
+                }
+            }
+            catch (Exception ex) {
+                Console.WriteLine(ex.Message);
+                throw ex;
+            }
+        }
+
+        public bool add(T t) {
+            try {
+                using (var context = new DatabaseContext()) {
+                    var table = (DbSet<T>)typeof(DatabaseContext).GetProperty(tableName).GetValue(context);
+                    table.Add(t);
+                    context.SaveChanges();
+                }
+            }
+            catch (Exception ex) {
+                Console.WriteLine(ex.Message);
+                return false;
+            }
+            return true;
+        }
+
+        public bool update(T t) {
+            try {
+                using (var context = new DatabaseContext()) {
+                    var table = (DbSet<T>)typeof(DatabaseContext).GetProperty(tableName).GetValue(context);
+                    int id = (int)typeof(T).GetProperty("id").GetValue(t);
+                    var item = table.Find(id);
+                    item = t;
+                    context.SaveChanges();
+                }
+            }
+            catch (Exception ex) {
+                Console.WriteLine(ex.Message);
+                return false;
+            }
+            return true;
         }
     }
 }

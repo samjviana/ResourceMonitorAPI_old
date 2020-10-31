@@ -8,10 +8,10 @@ namespace ResourceMonitorAPI.models {
         [Key]
         public int id { get; set; }
         [Required]
-        public int numero { get; set; }
+        public int number { get; set; }
         [Required]
-        public string nome { get; set; }
-        public int capacidade { get; set; }
-        public string discos { get; set; }
+        public string name { get; set; }
+        public double size { get; set; }
+        public string disks { get; set; }
     }
 }
